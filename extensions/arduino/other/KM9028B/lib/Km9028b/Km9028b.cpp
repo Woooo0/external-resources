@@ -1,6 +1,15 @@
 #include "km9028b.h"
 
-int powerSw = 15;
+const int powerD = 2;
+const int powerHold = 12;
+const int restartFlag = 14;
+const int powerSw = 15;
+const int powerC = 16;
+const int motorSleep = 21;
+const int redLed = 22;
+const int greenLed = 23;
+const int coulombInput = 36;
+const int chargeInput = 39;
 static bool clogFlag;
 unsigned long triggertime = 0;
 unsigned long delta = 200;
@@ -8,18 +17,18 @@ TaskHandle_t dis_run_handler = NULL, dis_coulomb_handler = NULL;
 
 Km9028b::Km9028b()
 {
-  pinMode(2, OUTPUT);
-  pinMode(12, OUTPUT);
-  pinMode(13, OUTPUT);
+  pinMode(powerD, OUTPUT);
+  pinMode(powerHold, OUTPUT);
+  pinMode(restartFlag, OUTPUT);
   pinMode(powerSw, INPUT_PULLUP);
-  pinMode(22, OUTPUT);
-  pinMode(21, OUTPUT);
-  pinMode(23, OUTPUT);
-  pinMode(16, OUTPUT);
-  pinMode(36, INPUT);
-  pinMode(39, INPUT_PULLUP);
-  digitalWrite(2, HIGH);
-  digitalWrite(16, HIGH);
+  pinMode(redLed, OUTPUT);
+  pinMode(motorSleep, OUTPUT);
+  pinMode(greenLed, OUTPUT);
+  pinMode(powerC, OUTPUT);
+  pinMode(coulombInput, INPUT);
+  pinMode(chargeInput, INPUT_PULLUP);
+  digitalWrite(powerD, HIGH);
+  digitalWrite(powerC, HIGH);
   xTaskCreate(ctrl, "ctrl", 2048, NULL, 5, NULL);
   attachInterrupt(digitalPinToInterrupt(powerSw), falling, RISING);
 }
@@ -28,9 +37,9 @@ void Km9028b::coulomb(void *parameter)
 {
   while (1)
   {
-    digitalWrite(22, HIGH);
+    digitalWrite(redLed, HIGH);
     vTaskDelay(250 / portTICK_PERIOD_MS);
-    digitalWrite(22, LOW);
+    digitalWrite(redLed, LOW);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
 }
@@ -39,9 +48,9 @@ void Km9028b::run(void *parameter)
 {
   while (1)
   {
-    digitalWrite(23, HIGH);
+    digitalWrite(greenLed, HIGH);
     vTaskDelay(450 / portTICK_PERIOD_MS);
-    digitalWrite(23, LOW);
+    digitalWrite(greenLed, LOW);
     vTaskDelay(450 / portTICK_PERIOD_MS);
   }
 }
@@ -49,47 +58,63 @@ void Km9028b::run(void *parameter)
 void Km9028b::ctrl(void *parameter)
 {
   static bool powerFlag;
-  int closeFlag;
-  static bool chargeFlag;
+  int closeFlag;          //值为3时关机
+  static bool chargeFlag; //插入充电哭标志
+  static int coulomCount;
   while (1)
   {
-    if (digitalRead(39) && dis_coulomb_handler == NULL && powerFlag && analogRead(36) < 2500)
+    //重复检测10次，如果条件满足为低电
+    if (analogRead(coulombInput) < 2500 && coulomCount != 10)
+    {
+      coulomCount++;
+    }
+    else if (coulomCount != 10)
+    {
+      coulomCount = 0;
+    }
+    //低电指示任务
+    if (digitalRead(chargeInput) && dis_coulomb_handler == NULL && powerFlag && coulomCount == 10)
     {
       if (dis_run_handler != NULL)
       {
         vTaskDelete(dis_run_handler);
       }
-      digitalWrite(23, LOW);
+      digitalWrite(greenLed, LOW);
       xTaskCreate(coulomb, "coulomb", 1024, NULL, 3, &dis_coulomb_handler);
     }
-    else if (!digitalRead(39))
+    //插入充电器
+    else if (!digitalRead(chargeInput))
     {
       if (dis_coulomb_handler != NULL)
       {
         vTaskDelete(dis_coulomb_handler);
       }
-      digitalWrite(22, LOW);
+      digitalWrite(redLed, LOW);
       chargeFlag = 1;
+      coulomCount = 0;
     }
-    else if (!powerFlag && chargeFlag && digitalRead(39) && analogRead(36) > 3100)
+    //充满
+    else if (!powerFlag && chargeFlag && digitalRead(chargeInput) && analogRead(coulombInput) > 3100)
     {
-      digitalWrite(23, HIGH);
+      digitalWrite(greenLed, HIGH);
       chargeFlag = 0;
     }
 
-    if (digitalRead(12) && digitalRead(powerSw))
+    if (digitalRead(powerHold) && digitalRead(powerSw))
     {
       powerFlag = 1;
       closeFlag = 0;
     }
+    //开机
     if (!digitalRead(powerSw))
     {
       vTaskDelay(1500 / portTICK_PERIOD_MS);
       if (!digitalRead(powerSw) && !powerFlag)
       {
-        digitalWrite(12, HIGH);
-        digitalWrite(23, HIGH);
+        digitalWrite(powerHold, HIGH);
+        digitalWrite(greenLed, HIGH);
       }
+      //关机
       while (!digitalRead(powerSw) && powerFlag)
       {
         vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -104,9 +129,12 @@ void Km9028b::ctrl(void *parameter)
           {
             vTaskDelete(dis_coulomb_handler);
           }
-          digitalWrite(12, LOW);
-          digitalWrite(22, LOW);
-          digitalWrite(23, LOW);
+          digitalWrite(powerHold, LOW);
+          digitalWrite(redLed, LOW);
+          digitalWrite(greenLed, LOW);
+          digitalWrite(motorSleep, LOW);
+          digitalWrite(powerD, HIGH);
+          digitalWrite(powerC, HIGH);
           detachInterrupt(digitalPinToInterrupt(powerSw));
         }
       }
@@ -117,30 +145,27 @@ void Km9028b::ctrl(void *parameter)
 
 void Km9028b::falling()
 {
-  Serial.println("kwkw");
   static int time = millis();
   if (millis() - triggertime > delta)
   {
     triggertime = millis();
-    if (!digitalRead(12) || digitalRead(13) || (dis_run_handler == NULL && millis() - time > 200))
+    if (!digitalRead(powerHold) || digitalRead(restartFlag) || (dis_run_handler == NULL && millis() - time > 200))
     {
-      digitalWrite(12, HIGH);
-      digitalWrite(21, HIGH);
+      digitalWrite(powerHold, HIGH);
+      digitalWrite(motorSleep, HIGH);
       xTaskCreate(run, "run", 1024, NULL, 2, &dis_run_handler);
-      digitalWrite(13, LOW);
-      digitalWrite(2, LOW);
-      digitalWrite(16, LOW);
+      digitalWrite(restartFlag, LOW);
+      digitalWrite(powerD, LOW);
+      digitalWrite(powerC, LOW);
       clogFlag = 1;
-      detachInterrupt(digitalPinToInterrupt(powerSw));
-      attachInterrupt(digitalPinToInterrupt(powerSw), falling, FALLING);
     }
-    else if (dis_run_handler != NULL && millis() - time > 200 && !digitalRead(powerSw))
-      {
-        digitalWrite(23, HIGH);
-        digitalWrite(21, LOW);
-        digitalWrite(13, HIGH);
-        ESP.restart();
-      }
+    else if (dis_run_handler != NULL && millis() - time > 200)
+    {
+      digitalWrite(greenLed, HIGH);
+      digitalWrite(motorSleep, LOW);
+      digitalWrite(restartFlag, HIGH);
+      ESP.restart();
+    }
   }
 }
 
