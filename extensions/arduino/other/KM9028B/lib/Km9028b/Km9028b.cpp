@@ -10,10 +10,11 @@ const int yellowLed = 22;
 const int greenLed = 23;
 const int coulombInput = 36;
 const int chargeInput = 39;
-static bool clogFlag;
-unsigned long triggertime = 0;
-unsigned long delta = 200;
-TaskHandle_t dis_run_handler = NULL, dis_coulomb_handler = NULL;
+volatile static bool clogFlag;
+volatile static bool offFlag;
+volatile unsigned long triggertime = 0;
+volatile unsigned long delta = 200;
+TaskHandle_t dis_run_handler = NULL, dis_coulomb_handler = NULL, dis_control_handler = NULL;
 
 Km9028b::Km9028b()
 {
@@ -58,7 +59,7 @@ void Km9028b::run(void *parameter)
 void Km9028b::ctrl(void *parameter)
 {
   static bool powerFlag;
-  static int closeFlag;          //值为3时关机
+  static int closeFlag;   //值为3时关机
   static bool chargeFlag; //插入充电器标志
   static int coulomCount;
   while (1)
@@ -94,7 +95,7 @@ void Km9028b::ctrl(void *parameter)
       chargeFlag = 1;
     }
     //充满
-    else if (!powerFlag && chargeFlag && digitalRead(chargeInput) && analogRead(coulombInput) > 3100)
+    else if (!powerFlag && chargeFlag && digitalRead(chargeInput) && analogRead(coulombInput) > 3000)
     {
       digitalWrite(greenLed, HIGH);
       chargeFlag = 0;
@@ -145,6 +146,7 @@ void Km9028b::ctrl(void *parameter)
 
 void Km9028b::falling()
 {
+  Serial.println("falling");
   static int time = millis();
   if (millis() - triggertime > delta)
   {
@@ -158,14 +160,45 @@ void Km9028b::falling()
       digitalWrite(powerD, LOW);
       digitalWrite(powerC, LOW);
       clogFlag = 1;
+      detachInterrupt(digitalPinToInterrupt(powerSw));
+      attachInterrupt(digitalPinToInterrupt(powerSw), falling, FALLING);
     }
-    else if (dis_run_handler != NULL && millis() - time > 200)
+    else
     {
-      digitalWrite(yellowLed, LOW);
-      digitalWrite(greenLed, HIGH);
-      digitalWrite(motorSleep, LOW);
-      digitalWrite(restartFlag, HIGH);
-      ESP.restart();
+      if (dis_control_handler == NULL)
+      {
+        xTaskCreate(control, "control", 1024, NULL, 2, &dis_control_handler);
+      }
+      else
+      {
+        vTaskResume(dis_control_handler);
+      }
+    }
+  }
+}
+
+void Km9028b::control(void *parameter)
+{
+  while (1)
+  {
+    if (!digitalRead(powerSw))
+    {
+      delay(200);
+      if (dis_run_handler != NULL && digitalRead(powerSw))
+      {
+        digitalWrite(yellowLed, LOW);
+        digitalWrite(greenLed, HIGH);
+        digitalWrite(motorSleep, LOW);
+        digitalWrite(restartFlag, HIGH);
+        ESP.restart();
+      }
+    }
+    else
+    {
+      if (dis_control_handler != NULL)
+      {
+        vTaskSuspend(dis_control_handler);
+      }
     }
   }
 }

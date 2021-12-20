@@ -6,13 +6,13 @@
 class Km9028b
 {
 private:
-  static void ctrl(void * parameter );
-  static void run(void * parameter );
-  static void coulomb(void * parameter );
+  static void ctrl(void *parameter);
+  static void run(void *parameter);
+  static void coulomb(void *parameter);
   static void falling();
+  static void control(void *parameter);
 
-public:
-  Km9028b();
+      public : Km9028b();
   void clog();
 };
 #endif
