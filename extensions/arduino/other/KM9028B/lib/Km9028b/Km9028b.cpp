@@ -6,7 +6,7 @@ const int restartFlag = 14;
 const int powerSw = 15;
 const int powerC = 16;
 const int motorSleep = 21;
-const int redLed = 22;
+const int yellowLed = 22;
 const int greenLed = 23;
 const int coulombInput = 36;
 const int chargeInput = 39;
@@ -21,7 +21,7 @@ Km9028b::Km9028b()
   pinMode(powerHold, OUTPUT);
   pinMode(restartFlag, OUTPUT);
   pinMode(powerSw, INPUT_PULLUP);
-  pinMode(redLed, OUTPUT);
+  pinMode(yellowLed, OUTPUT);
   pinMode(motorSleep, OUTPUT);
   pinMode(greenLed, OUTPUT);
   pinMode(powerC, OUTPUT);
@@ -37,9 +37,9 @@ void Km9028b::coulomb(void *parameter)
 {
   while (1)
   {
-    digitalWrite(redLed, HIGH);
+    digitalWrite(yellowLed, HIGH);
     vTaskDelay(250 / portTICK_PERIOD_MS);
-    digitalWrite(redLed, LOW);
+    digitalWrite(yellowLed, LOW);
     vTaskDelay(250 / portTICK_PERIOD_MS);
   }
 }
@@ -58,8 +58,8 @@ void Km9028b::run(void *parameter)
 void Km9028b::ctrl(void *parameter)
 {
   static bool powerFlag;
-  int closeFlag;          //值为3时关机
-  static bool chargeFlag; //插入充电哭标志
+  static int closeFlag;          //值为3时关机
+  static bool chargeFlag; //插入充电器标志
   static int coulomCount;
   while (1)
   {
@@ -77,7 +77,7 @@ void Km9028b::ctrl(void *parameter)
     {
       if (dis_run_handler != NULL)
       {
-        vTaskDelete(dis_run_handler);
+        vTaskSuspend(dis_run_handler);
       }
       digitalWrite(greenLed, LOW);
       xTaskCreate(coulomb, "coulomb", 1024, NULL, 3, &dis_coulomb_handler);
@@ -87,11 +87,11 @@ void Km9028b::ctrl(void *parameter)
     {
       if (dis_coulomb_handler != NULL)
       {
-        vTaskDelete(dis_coulomb_handler);
+        vTaskSuspend(dis_coulomb_handler);
+        coulomCount = 0;
       }
-      digitalWrite(redLed, LOW);
+      digitalWrite(yellowLed, LOW);
       chargeFlag = 1;
-      coulomCount = 0;
     }
     //充满
     else if (!powerFlag && chargeFlag && digitalRead(chargeInput) && analogRead(coulombInput) > 3100)
@@ -123,14 +123,14 @@ void Km9028b::ctrl(void *parameter)
         {
           if (dis_run_handler != NULL)
           {
-            vTaskDelete(dis_run_handler);
+            vTaskSuspend(dis_run_handler);
           }
           if (dis_coulomb_handler != NULL)
           {
-            vTaskDelete(dis_coulomb_handler);
+            vTaskSuspend(dis_coulomb_handler);
           }
           digitalWrite(powerHold, LOW);
-          digitalWrite(redLed, LOW);
+          digitalWrite(yellowLed, LOW);
           digitalWrite(greenLed, LOW);
           digitalWrite(motorSleep, LOW);
           digitalWrite(powerD, HIGH);
@@ -161,6 +161,7 @@ void Km9028b::falling()
     }
     else if (dis_run_handler != NULL && millis() - time > 200)
     {
+      digitalWrite(yellowLed, LOW);
       digitalWrite(greenLed, HIGH);
       digitalWrite(motorSleep, LOW);
       digitalWrite(restartFlag, HIGH);
