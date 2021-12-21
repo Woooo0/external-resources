@@ -65,7 +65,7 @@ void Km9028b::ctrl(void *parameter)
   while (1)
   {
     //重复检测10次，如果条件满足为低电
-    if (analogRead(coulombInput) < 2500 && coulomCount != 10)
+    if (analogRead(coulombInput) < 2300 && coulomCount != 10)
     {
       coulomCount++;
     }
@@ -73,15 +73,18 @@ void Km9028b::ctrl(void *parameter)
     {
       coulomCount = 0;
     }
+    Serial.println(coulomCount);
     //低电指示任务
-    if (digitalRead(chargeInput) && dis_coulomb_handler == NULL && powerFlag && coulomCount == 10)
+    if (digitalRead(chargeInput) && powerFlag && coulomCount == 10)
     {
-      if (dis_run_handler != NULL)
+      if (dis_coulomb_handler == NULL)
       {
-        vTaskSuspend(dis_run_handler);
+        xTaskCreate(coulomb, "coulomb", 1024, NULL, 3, &dis_coulomb_handler);
       }
-      digitalWrite(greenLed, LOW);
-      xTaskCreate(coulomb, "coulomb", 1024, NULL, 3, &dis_coulomb_handler);
+      else
+      {
+        vTaskResume(dis_coulomb_handler);
+      }
     }
     //插入充电器
     else if (!digitalRead(chargeInput))
