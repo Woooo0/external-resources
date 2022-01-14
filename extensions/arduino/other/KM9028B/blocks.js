@@ -23,8 +23,8 @@ function addBlocks(Blockly) {
                         type: 'field_dropdown',
                         name: 'com',
                         options: [
-                            ['c', '26'],
-                            ['d', '25']
+                            ['c', '5'],
+                            ['d', '13']
                         ]
                     },
                     {

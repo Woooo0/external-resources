@@ -73,7 +73,6 @@ void Km9028b::ctrl(void *parameter)
     {
       coulomCount = 0;
     }
-    Serial.println(coulomCount);
     //低电指示任务
     if (digitalRead(chargeInput) && powerFlag && coulomCount == 10)
     {

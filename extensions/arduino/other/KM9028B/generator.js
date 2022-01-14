@@ -153,8 +153,6 @@ function addGenerator(Blockly) {
 
         Blockly.Arduino.includes_.km_motor = `#include <km_motor.h>`;
         Blockly.Arduino.definitions_[`km_motor motor${pin}`] = `km_motor motor${pin}(${pin},${pwm},${passage});`;
-        Blockly.Arduino.setups_[`pinMode(21, OUTPUT)`] = `pinMode(21, OUTPUT);`;
-        Blockly.Arduino.setups_[`digitalWrite(21, HIGH)`] = `digitalWrite(21, HIGH);`;
         if (direction == 1) {
             return `motor${pin}.forward(${speed});\n`;
         } else if (direction == 2) {
